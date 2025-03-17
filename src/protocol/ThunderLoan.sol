@@ -137,7 +137,7 @@ contract ThunderLoan is Initializable, OwnableUpgradeable, UUPSUpgradeable, Orac
     /*//////////////////////////////////////////////////////////////
                            EXTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
-    // @audit initializer can be called by anybody. can be front run 
+    // @audit initializer can be called by anybody. can be front run
     function initialize(address tswapAddress) external initializer {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
@@ -155,6 +155,7 @@ contract ThunderLoan is Initializable, OwnableUpgradeable, UUPSUpgradeable, Orac
         assetToken.mint(msg.sender, mintAmount);
         uint256 calculatedFee = getCalculatedFee(token, amount);
         assetToken.updateExchangeRate(calculatedFee);
+        // e underlying tokens are transferd to assettoken contract
         token.safeTransferFrom(msg.sender, address(assetToken), amount);
     }
 
@@ -258,6 +259,7 @@ contract ThunderLoan is Initializable, OwnableUpgradeable, UUPSUpgradeable, Orac
             return assetToken;
         }
     }
+    // @audit no natspecs
 
     function getCalculatedFee(IERC20 token, uint256 amount) public view returns (uint256 fee) {
         //slither-disable-next-line divide-before-multiply
