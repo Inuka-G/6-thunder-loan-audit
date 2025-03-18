@@ -77,7 +77,8 @@ contract ThunderLoanTest is BaseTest {
     }
 
     function testFlashLoan() public setAllowedToken hasDeposits {
-        uint256 amountToBorrow = AMOUNT * 10;
+        // uint256 constant AMOUNT = 10e18;
+        uint256 amountToBorrow = AMOUNT * 10; //100e18
         uint256 calculatedFee = thunderLoan.getCalculatedFee(tokenA, amountToBorrow);
         vm.startPrank(user);
         tokenA.mint(address(mockFlashLoanReceiver), AMOUNT);
@@ -86,5 +87,25 @@ contract ThunderLoanTest is BaseTest {
 
         assertEq(mockFlashLoanReceiver.getBalanceDuring(), amountToBorrow + AMOUNT);
         assertEq(mockFlashLoanReceiver.getBalanceAfter(), AMOUNT - calculatedFee);
+        console.log(calculatedFee);
+    }
+
+    function testRedeemAfterFlashLoan() public setAllowedToken hasDeposits {
+        uint256 amountToBorrow = AMOUNT * 10;
+        uint256 calculatedFee = thunderLoan.getCalculatedFee(tokenA, amountToBorrow);
+
+        vm.startPrank(user);
+        tokenA.mint(address(mockFlashLoanReceiver), AMOUNT);
+        thunderLoan.flashloan(address(mockFlashLoanReceiver), tokenA, amountToBorrow, "");
+        vm.stopPrank();
+
+        vm.startPrank(liquidityProvider);
+        uint256 redeemAmountByLiq = type(uint256).max;
+        thunderLoan.redeem(tokenA, redeemAmountByLiq);
+        // redeem amount 1003300900000000000000 1003e18
+        // deposited amount  //1000e18
+        //fee 0.3e18
+        //amount expected to reddem => 1000.3e18; but get 1003e18
+        vm.stopPrank();
     }
 }
