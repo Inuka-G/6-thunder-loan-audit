@@ -1,3 +1,15 @@
+### [H-#] Can Stole tokens by calling deposit instead of repay or direct transfer when flash loaninng
+
+**Description:**
+
+**Impact:**
+
+**Proof of Concept:**
+
+**Recommended Mitigation:**
+
+################
+
 ### [H-#] Erorneous function `ThunderLoan::deposit` has `updateExchangeRate` function call which blocks redeem function and protocol thinks it has more funds that it is and update exchange rate to wrong value
 
 **Description:**
