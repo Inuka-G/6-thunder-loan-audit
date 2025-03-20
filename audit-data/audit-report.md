@@ -111,3 +111,32 @@ updateExchangerate called by not fees collected
         token.safeTransferFrom(msg.sender, address(assetToken), amount);
     }
 ```
+
+##############
+
+### [H-#] storage collion makes upgraded fee way higher(Root Cause -> Impact)
+
+**Description:**
+```
+----------------|
+| s_flashLoanFee          | uint256                                         | 2    | 0      | 32    | src/upgradedProtocol/ThunderLoanUpgraded.sol:ThunderLoanUpgraded |
+|----------------
+```
+**Impact:**
+s_currentlyFlashLoaning also affected
+**Proof of Concept:**
+
+```solidity
+  function testStorageCollion() public {
+        vm.startPrank(thunderLoan.owner());
+        uint256 originalValue = thunderLoan.getFee();
+        ThunderLoanUpgraded upgraded = new ThunderLoanUpgraded();
+        thunderLoan.upgradeToAndCall(address(upgraded), "");
+        uint256 afterUpgradeValue = thunderLoan.getFee();
+        vm.stopPrank();
+        console.log("originalValue", originalValue);
+        console.log("afterUpgradeValue", afterUpgradeValue);
+    }
+```
+
+**Recommended Mitigation:**
