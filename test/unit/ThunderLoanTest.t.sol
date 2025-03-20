@@ -11,6 +11,7 @@ import { BuffMockPoolFactory } from "../mocks/BuffMockPoolFactory.sol";
 import { BuffMockTSwap } from "../mocks/BuffMockTSwap.sol";
 import { IFlashLoanReceiver } from "../../src/interfaces/IFlashLoanReceiver.sol";
 import { IERC20 } from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import { ThunderLoanUpgraded } from "../../src/upgradedProtocol/ThunderLoanUpgraded.sol";
 
 contract ThunderLoanTest is BaseTest {
     uint256 constant AMOUNT = 10e18;
@@ -179,6 +180,17 @@ contract ThunderLoanTest is BaseTest {
         // 50.15718582989109e18 stolen money
         // 50.15e18 amountToBorrow + fees
         console.log("amountToBorrow + fees", (amountToBorrow + fees));
+    }
+
+    function testStorageCollion() public {
+        vm.startPrank(thunderLoan.owner());
+        uint256 originalValue = thunderLoan.getFee();
+        ThunderLoanUpgraded upgraded = new ThunderLoanUpgraded();
+        thunderLoan.upgradeToAndCall(address(upgraded), "");
+        uint256 afterUpgradeValue = thunderLoan.getFee();
+        vm.stopPrank();
+        console.log("originalValue", originalValue);
+        console.log("afterUpgradeValue", afterUpgradeValue);
     }
 }
 /*//////////////////////////////////////////////////////////////
